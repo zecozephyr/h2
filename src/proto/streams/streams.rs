@@ -1462,9 +1462,20 @@ fn drop_stream_ref(inner: &Mutex<Inner>, key: store::Key) {
 
 fn maybe_cancel(stream: &mut store::Ptr, actions: &mut Actions, counts: &mut Counts) {
     if stream.is_canceled_interest() {
+        let reason = if stream.state.is_send_closed()
+            && counts.peer().is_server()
+            && !counts.peer().is_local_init(stream.id)
+        {
+            // If we've already queued up a complete server response with END_STREAM and wish to
+            // indicate no further interest in the stream then reset with code NO_ERROR.
+            Reason::NO_ERROR
+        } else {
+            Reason::CANCEL
+        };
+
         actions
             .send
-            .schedule_implicit_reset(stream, Reason::CANCEL, counts, &mut actions.task);
+            .schedule_implicit_reset(stream, reason, counts, &mut actions.task);
         actions.recv.enqueue_reset_expiration(stream, counts);
     }
 }
